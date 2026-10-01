@@ -1014,6 +1014,16 @@ int qcom_socinfo_init(void)
 		return -ENOENT;
 	}
 
+	/* Expose the SoC identification for board scripts and diagnostics */
+	env_set_ulong("socinfo_id", le32_to_cpu(info->id));
+	env_set_ulong("socinfo_ver", le32_to_cpu(info->ver));
+	if (offsetof(struct socinfo, raw_id) + sizeof(info->raw_id) <= item_size) {
+		env_set_ulong("socinfo_raw_id", le32_to_cpu(info->raw_id));
+		env_set_ulong("socinfo_raw_ver", le32_to_cpu(info->raw_ver));
+	}
+	if (offsetof(struct socinfo, chip_id) + SMEM_SOCINFO_CHIP_ID_LENGTH <= item_size)
+		env_set("socinfo_chip", info->chip_id);
+
 	return 0;
 }
 
