@@ -2600,7 +2600,7 @@ config CMD_PSTORE
 	  This provides access to Linux PStore with Rammoops backend. The main
 	  feature is to allow to display or save PStore records.
 
-	  See doc/pstore.rst for more information.
+	  See doc/usage/cmd/pstore.rst for more information.
 
 if CMD_PSTORE
 
