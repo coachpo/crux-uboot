@@ -2604,6 +2604,14 @@ config CMD_PSTORE
 
 if CMD_PSTORE
 
+config CMD_PSTORE_FDT
+	bool "Add ramoops node to the OS device tree"
+	default y
+	help
+	  Add a ramoops reserved-memory node to the OS device tree using the
+	  PStore parameters. Disable this if the kernel registers its own
+	  ramoops device. The pstore command remains available to read records.
+
 config CMD_PSTORE_MEM_ADDR
 	hex "Memory Address"
 	depends on CMD_PSTORE

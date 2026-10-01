@@ -491,6 +491,9 @@ void fdt_fixup_pstore(void *blob)
 	u32 addr_cells;
 	u32 size_cells;
 
+	if (!IS_ENABLED(CONFIG_CMD_PSTORE_FDT))
+		return;
+
 	nodeoffset = fdt_path_offset(blob, "/");
 	if (nodeoffset < 0) {
 		/* Not found or something else bad happened. */

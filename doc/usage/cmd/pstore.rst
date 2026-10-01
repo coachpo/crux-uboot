@@ -36,9 +36,13 @@ i.e.::
     ramoops.mem_address=0x30000000 ramoops.mem_size=0x100000 ramoops.record_size=0x2000 ramoops.console_size=0x2000 memmap=0x100000$0x30000000
 
 The same values should be set in U-Boot to be able to retrieve the records.
-This values can be set at build time in U-Boot configuration file, or at runtime.
-U-Boot automatically patches the Device Tree to pass the Ramoops parameters to
-the kernel.
+These values can be set at build time in the U-Boot configuration file, or at
+runtime. With ``CONFIG_CMD_PSTORE_FDT`` enabled, U-Boot automatically adds a
+ramoops reserved-memory node to the OS Device Tree using these parameters.
+This option defaults to enabled when ``CONFIG_CMD_PSTORE`` is enabled. Disable
+it when the kernel registers its own ramoops device, for example through
+board-specific kernel parameters. The ``pstore`` command remains available to
+read or save records when this option is disabled.
 
 The PStore configuration parameters are:
 
