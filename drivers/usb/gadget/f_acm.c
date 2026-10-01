@@ -493,9 +493,12 @@ static void __acm_tx(struct f_acm *f_acm)
 	do {
 		dm_usb_gadget_handle_interrupts(f_acm->udc);
 
-		if (!(f_acm->handshake_bits & ACM_CTRL_DTR))
-			break;
-
+		/*
+		 * Local crux bring-up patch: do not gate TX on the host
+		 * having sent CDC SET_CONTROL_LINE_STATE (DTR).  The macOS
+		 * AppleUSBCDC driver never delivers that request for this
+		 * gadget, which made the console input-only.
+		 */
 		if (!f_acm->tx_on)
 			continue;
 
