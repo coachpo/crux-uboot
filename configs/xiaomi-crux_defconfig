@@ -1,0 +1,53 @@
+# Configuration for building U-Boot for Xiaomi Mi 9 Pro 5G (crux)
+#
+# Based on qcom_defconfig plus the phone-oriented settings from
+# board/qualcomm/qcom-phone.config, with a crux-specific environment.
+
+#include "qcom_defconfig"
+
+# The crux devicetree is not in dts/upstream yet; build it from
+# arch/arm/dts like other boards whose DT has not been synced.
+# CONFIG_OF_UPSTREAM is not set
+CONFIG_DEFAULT_DEVICE_TREE="sm8150-xiaomi-crux"
+CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/xiaomi-crux.env"
+
+# --- phone settings (mirrors board/qualcomm/qcom-phone.config) ---
+CONFIG_PANIC_HANG=y
+CONFIG_CMD_PAUSE=y
+CONFIG_BOOT_RETRY=y
+CONFIG_BOOT_RETRY_TIME=1
+CONFIG_BUTTON_REMAP_PHONE_KEYS=y
+CONFIG_RETRY_BOOTCMD=y
+# Crux DRAM starts at 0x80000000; keep DMA/fastboot buffers in normal RAM.
+CONFIG_FASTBOOT_BUF_ADDR=0xC0000000
+CONFIG_USB_FUNCTION_FASTBOOT=y
+CONFIG_USB_FUNCTION_ACM=y
+CONFIG_CMD_UMS_ABORT_KEYED=y
+CONFIG_CONSOLE_RECORD=y
+CONFIG_CONSOLE_RECORD_INIT_F=y
+CONFIG_CONSOLE_RECORD_OUT_SIZE=0x6000
+CONFIG_FASTBOOT_CMD_OEM_CONSOLE=y
+CONFIG_FASTBOOT_FLASH=y
+CONFIG_FASTBOOT_FLASH_MMC_DEV=0
+CONFIG_FASTBOOT_OEM_RUN=y
+CONFIG_CMD_FASTBOOT_ABORT_KEYED=y
+
+# Phones have no serial port; without this U-Boot panics early
+# ("No serial driver found") and PANIC_HANG hides everything.
+# CONFIG_REQUIRE_SERIAL_CONSOLE is not set
+
+# Pstore / ramoops (stock crux kernel uses ramoops_memreserve=4M @ 0xB0000000)
+CONFIG_CMD_PSTORE=y
+# The downstream kernel registers ramoops itself via ramoops_memreserve.
+# CONFIG_CMD_PSTORE_FDT is not set
+CONFIG_CMD_PSTORE_MEM_ADDR=0xB0000000
+CONFIG_CMD_PSTORE_MEM_SIZE=0x400000
+CONFIG_CMD_PSTORE_RECORD_SIZE=0x1000
+CONFIG_CMD_PSTORE_CONSOLE_SIZE=0x200000
+CONFIG_CMD_PSTORE_FTRACE_SIZE=0x0
+CONFIG_CMD_PSTORE_PMSG_SIZE=0x200000
+CONFIG_CMD_PSTORE_ECC_SIZE=0x0
+
+# Chainload helpers: raw (gzip) Android ramdisks + DTBO overlays
+CONFIG_SUPPORT_RAW_INITRD=y
+CONFIG_OF_LIBFDT_OVERLAY=y
