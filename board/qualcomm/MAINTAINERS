@@ -22,3 +22,8 @@ QUALCOMM DRAGONWING QCS9100
 M:	Varadarajan Narayanan <quic_varada@quicinc.com>
 S:	Maintained
 N:	qcs9100
+
+XIAOMI MI 9 PRO 5G (CRUX)
+M:	coachpo <12790403+coachpo@users.noreply.github.com>
+S:	Maintained
+N:	xiaomi-crux
