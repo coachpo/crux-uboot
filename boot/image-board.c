@@ -918,7 +918,14 @@ int image_setup_linux(struct bootm_headers *images)
 	/* This function cannot be called without lmb support */
 	if (!CONFIG_IS_ENABLED(LMB))
 		return -EFAULT;
-	if (CONFIG_IS_ENABLED(OF_LIBFDT))
+	/*
+	 * The separate "bootm fdt" state reserves these regions before FDT
+	 * relocation. Don't process them again during prep: gd->fdt_blob still
+	 * names the control FDT, so a second pass can free part of the Linux
+	 * FDT's reservations before trying to add them again.
+	 */
+	if (CONFIG_IS_ENABLED(OF_LIBFDT) &&
+	    !(images->state & BOOTM_STATE_FDT))
 		boot_fdt_add_mem_rsv_regions(*of_flat_tree);
 
 	if (IS_ENABLED(CONFIG_SYS_BOOT_GET_CMDLINE)) {
