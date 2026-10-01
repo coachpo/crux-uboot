@@ -60,7 +60,7 @@
 #define MAX_PRDT_ENTRY	262144
 
 /* maximum bytes per request */
-#define UFS_MAX_BYTES	(128 * 256 * 1024)
+#define UFS_MAX_BYTES	(4 * 1024 * 1024)
 
 static inline bool ufshcd_is_hba_active(struct ufs_hba *hba);
 static inline void ufshcd_hba_stop(struct ufs_hba *hba);
@@ -915,6 +915,9 @@ static int ufshcd_send_command(struct ufs_hba *hba, unsigned int task_tag)
 	u32 intr_status;
 	u32 enabled_intr_status;
 
+	if (hba->io_failed)
+		return -EIO;
+
 	ufshcd_writel(hba, 1 << task_tag, REG_UTP_TRANSFER_REQ_DOOR_BELL);
 
 	/* Make sure doorbell reg is updated before reading interrupt status */
@@ -926,16 +929,15 @@ static int ufshcd_send_command(struct ufs_hba *hba, unsigned int task_tag)
 		enabled_intr_status = intr_status & hba->intr_mask;
 		ufshcd_writel(hba, intr_status, REG_INTERRUPT_STATUS);
 
-		if (hba->max_pwr_info.info.pwr_rx != SLOWAUTO_MODE &&
-		    hba->max_pwr_info.info.pwr_tx != SLOWAUTO_MODE) {
-			if (get_timer(start) > QUERY_REQ_TIMEOUT) {
-				dev_err(hba->dev,
-					"Timedout waiting for UTP response\n");
-				return -ETIMEDOUT;
-			}
+		if (get_timer(start) > QUERY_REQ_TIMEOUT) {
+			hba->io_failed = true;
+			dev_err(hba->dev,
+				"Timedout waiting for UTP response\n");
+			return -ETIMEDOUT;
 		}
 
 		if (enabled_intr_status & UFSHCD_ERROR_MASK) {
+			hba->io_failed = true;
 			dev_err(hba->dev, "Error in status:%08x\n",
 				enabled_intr_status);
 
@@ -1029,6 +1031,9 @@ static int ufshcd_exec_dev_cmd(struct ufs_hba *hba, enum dev_cmd_type cmd_type,
 {
 	int err;
 	int resp;
+
+	if (hba->io_failed)
+		return -EIO;
 
 	err = ufshcd_comp_devman_upiu(hba, cmd_type);
 	if (err)
@@ -1661,8 +1666,11 @@ static int ufs_scsi_exec(struct udevice *scsi_dev, struct scsi_cmd *pccb)
 {
 	struct ufs_hba *hba = dev_get_uclass_priv(scsi_dev->parent);
 	u32 upiu_flags;
-	int ocs, result = 0;
+	int err, ocs, result = 0;
 	u8 scsi_status;
+
+	if (hba->io_failed)
+		return -EIO;
 
 	ufshcd_prepare_req_desc_hdr(hba, &upiu_flags, pccb->dma_dir);
 	ufshcd_prepare_utp_scsi_cmd_upiu(hba, pccb, upiu_flags);
@@ -1670,7 +1678,9 @@ static int ufs_scsi_exec(struct udevice *scsi_dev, struct scsi_cmd *pccb)
 
 	ufshcd_cache_flush(pccb->pdata, pccb->datalen);
 
-	ufshcd_send_command(hba, TASK_TAG);
+	err = ufshcd_send_command(hba, TASK_TAG);
+	if (err)
+		return err;
 
 	ufshcd_cache_invalidate(pccb->pdata, pccb->datalen);
 

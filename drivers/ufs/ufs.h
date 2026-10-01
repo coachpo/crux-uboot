@@ -719,6 +719,8 @@ struct ufs_hba {
 	struct ufs_pwr_mode_info max_pwr_info;
 
 	struct ufs_dev_cmd dev_cmd;
+	/* Do not reuse UTP descriptors after a request failed to quiesce. */
+	bool io_failed;
 };
 
 static inline int ufshcd_ops_init(struct ufs_hba *hba)
