@@ -519,6 +519,7 @@
 		function = "normal";
 		input-enable;
 		bias-pull-up;
+		power-source = <1>;
 		qcom,drive-strength = <PMIC_GPIO_STRENGTH_NO>;
 	};
 };
