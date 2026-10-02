@@ -19,6 +19,41 @@ be appended to the U-Boot image the same way as when booting Linux. U-Boot
 will then retrieve the DTB during init. This way the memory layout and KASLR
 offset will be populated by ABL.
 
+SoC identification
+------------------
+
+U-Boot exports the following environment variables from the Qualcomm socinfo
+record in shared memory (SMEM item ``SMEM_HW_SW_BUILD_ID``, 137). Board scripts
+and diagnostics can use them to identify the SoC supplied by the boot firmware.
+The four numeric values are unsigned decimal strings; ``socinfo_chip`` is text.
+
+``socinfo_id``
+    Qualcomm SoC identifier from the ``id`` field.
+
+``socinfo_ver``
+    SoC revision from the ``ver`` field, encoded as ``(major << 16) | minor``.
+    For example, revision 2.2 is exported as ``131074`` (``0x00020002``).
+
+``socinfo_raw_id``
+    Raw hardware identifier from the ``raw_id`` field.
+
+``socinfo_raw_ver``
+    Raw hardware revision from the ``raw_ver`` field, exported without
+    interpreting its encoding.
+
+``socinfo_chip``
+    Chip identifier string from the ``chip_id`` field.
+
+These variables are populated during SoC initialization only if the SMEM
+socinfo record is available and large enough to include ``serial_num``.
+``socinfo_chip`` additionally requires the record to contain the complete
+``chip_id`` field. Scripts must allow for variables to be absent when firmware
+does not supply the required data.
+
+To inspect the values at the U-Boot prompt::
+
+    => printenv socinfo_id socinfo_ver socinfo_raw_id socinfo_raw_ver socinfo_chip
+
 Installation
 ------------
 Build

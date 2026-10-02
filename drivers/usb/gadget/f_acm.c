@@ -495,18 +495,13 @@ static void __acm_tx(struct f_acm *f_acm)
 	ulong start;
 
 	/*
-	 * Local crux bring-up patch: do not gate TX on the host having
-	 * sent CDC SET_CONTROL_LINE_STATE (DTR).  The macOS AppleUSBCDC
-	 * driver never delivers that request for this gadget, which made
-	 * the console input-only.
+	 * Allow console output without DTR asserted. Requiring DTR prevented
+	 * output in the tested macOS host setup even though input worked.
 	 *
-	 * Local crux bring-up patch: also never spin forever waiting for
-	 * the host to drain a transfer.  If the host is connected but not
-	 * reading (macOS has enumerated the gadget but no application has
-	 * opened the port), the old loop froze U-Boot in the middle of the
-	 * boot menu.  Probe once, then mark TX stalled so that later calls
-	 * return immediately instead of paying the timeout on every menu
-	 * redraw.  A completion (host reads again) clears the flag.
+	 * A configured host may not be reading the console. Bound the wait
+	 * for an outstanding transfer, then mark TX stalled so later calls
+	 * return immediately. A completion clears the flag when the host
+	 * starts reading again.
 	 */
 	if (!f_acm->tx_on) {
 		if (f_acm->tx_stalled)
