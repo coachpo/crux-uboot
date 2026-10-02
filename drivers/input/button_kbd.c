@@ -90,7 +90,13 @@ int button_read_keys(struct input_config *input)
 		if (state_changed) {
 			debug("%s: %d\n", uc_plat->label, code);
 			priv->old_state[i] = state;
-			input_add_keycode(input, code, state);
+			/*
+			 * BUTTON_ON (1) means pressed; input_add_keycode()
+			 * expects a "release" flag, so invert the state.
+			 * Reporting on the press makes arrow keys cancel the
+			 * bootmenu autoboot countdown immediately.
+			 */
+			input_add_keycode(input, code, !state);
 		}
 		i++;
 	}
