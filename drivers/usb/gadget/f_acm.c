@@ -16,6 +16,7 @@
 #include <malloc.h>
 #include <memalign.h>
 #include <stdio_dev.h>
+#include <time.h>
 #include <version.h>
 #include <watchdog.h>
 
@@ -39,6 +40,7 @@ struct f_acm {
 
 	bool connected;
 	bool tx_on;
+	bool tx_stalled;
 
 	circbuf_t rx_buf;
 	circbuf_t tx_buf;
@@ -287,6 +289,7 @@ static void acm_tx_complete(struct usb_ep *ep, struct usb_request *req)
 	struct f_acm *f_acm = req->context;
 
 	f_acm->tx_on = true;
+	f_acm->tx_stalled = false;
 }
 
 static void acm_rx_complete(struct usb_ep *ep, struct usb_request *req)
@@ -489,45 +492,50 @@ static struct usb_gadget_strings *acm_strings[] = {
 static void __acm_tx(struct f_acm *f_acm)
 {
 	int len, ret;
+	ulong start;
 
-	do {
-		dm_usb_gadget_handle_interrupts(f_acm->udc);
+	/*
+	 * Local crux bring-up patch: do not gate TX on the host having
+	 * sent CDC SET_CONTROL_LINE_STATE (DTR).  The macOS AppleUSBCDC
+	 * driver never delivers that request for this gadget, which made
+	 * the console input-only.
+	 *
+	 * Local crux bring-up patch: also never spin forever waiting for
+	 * the host to drain a transfer.  If the host is connected but not
+	 * reading (macOS has enumerated the gadget but no application has
+	 * opened the port), the old loop froze U-Boot in the middle of the
+	 * boot menu.  Probe once, then mark TX stalled so that later calls
+	 * return immediately instead of paying the timeout on every menu
+	 * redraw.  A completion (host reads again) clears the flag.
+	 */
+	if (!f_acm->tx_on) {
+		if (f_acm->tx_stalled)
+			return;
 
-		/*
-		 * Local crux bring-up patch: do not gate TX on the host
-		 * having sent CDC SET_CONTROL_LINE_STATE (DTR).  The macOS
-		 * AppleUSBCDC driver never delivers that request for this
-		 * gadget, which made the console input-only.
-		 */
-		if (!f_acm->tx_on)
-			continue;
+		start = get_timer(0);
+		do {
+			dm_usb_gadget_handle_interrupts(f_acm->udc);
+			if (f_acm->tx_on)
+				break;
+		} while (get_timer(start) < 100);
 
-		len = buf_pop(&f_acm->tx_buf, f_acm->req_in->buf, REQ_SIZE_MAX);
-		if (!len)
-			break;
+		if (!f_acm->tx_on) {
+			f_acm->tx_stalled = true;
+			return;
+		}
+	}
 
-		f_acm->req_in->length = len;
+	len = buf_pop(&f_acm->tx_buf, f_acm->req_in->buf, REQ_SIZE_MAX);
+	if (!len)
+		return;
 
-		ret = usb_ep_queue(f_acm->ep_in, f_acm->req_in, 0);
-		if (ret)
-			break;
+	f_acm->req_in->length = len;
 
-		f_acm->tx_on = false;
+	ret = usb_ep_queue(f_acm->ep_in, f_acm->req_in, 0);
+	if (ret)
+		return;
 
-		/* Do not reset the watchdog, if TX is stuck there is probably
-		 * a real issue.
-		 */
-	} while (1);
-}
-
-static bool acm_connected(struct stdio_dev *dev)
-{
-	struct f_acm *f_acm = stdio_to_acm(dev);
-
-	/* give a chance to process udc irq */
-	dm_usb_gadget_handle_interrupts(f_acm->udc);
-
-	return f_acm->connected;
+	f_acm->tx_on = false;
 }
 
 static int acm_add(struct usb_configuration *c)
@@ -654,13 +662,13 @@ static int acm_stdio_start(struct stdio_dev *dev)
 	else
 		return -ENODEV;
 
-	while (!acm_connected(dev)) {
-		if (ctrlc())
-			return -ECANCELED;
-
-		schedule();
-	}
-
+	/*
+	 * Local crux bring-up patch: do not block until the host connects.
+	 * A standalone boot has no USB host at all, and preboot would hang
+	 * here before the boot menu ever appeared.  Output is buffered and
+	 * starts flowing once the host configures the data interface; input
+	 * works from then on.
+	 */
 	return 0;
 }
 
