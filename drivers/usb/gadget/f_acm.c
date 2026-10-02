@@ -10,7 +10,6 @@
  */
 
 #include <circbuf.h>
-#include <console.h>
 #include <errno.h>
 #include <g_dnl.h>
 #include <malloc.h>
@@ -295,6 +294,16 @@ static void acm_tx_complete(struct usb_ep *ep, struct usb_request *req)
 static void acm_rx_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_acm *f_acm = req->context;
+
+	/*
+	 * Do not re-submit when the transfer did not complete normally.
+	 * -ESHUTDOWN is passed here by the UDC while the endpoint is being
+	 * disabled (e.g. when the gadget is unregistered): re-queuing would
+	 * put the request back on the endpoint's request list forever and
+	 * dwc3_remove_requests() would spin in its giveback loop.
+	 */
+	if (req->status < 0)
+		return;
 
 	buf_push(&f_acm->rx_buf, req->buf, req->actual);
 
