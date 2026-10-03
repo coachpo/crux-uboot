@@ -26,7 +26,7 @@
 struct button_kbd_priv {
 	struct input_config *input;
 	u32 button_size;
-	u32 *old_state;
+	int *old_state;
 };
 
 static int button_kbd_start(struct udevice *dev)
@@ -62,7 +62,7 @@ static int button_kbd_start(struct udevice *dev)
 	}
 
 	priv->button_size = i;
-	priv->old_state = calloc(i, sizeof(int));
+	priv->old_state = calloc(i, sizeof(*priv->old_state));
 
 	return 0;
 }
@@ -73,32 +73,33 @@ int button_read_keys(struct input_config *input)
 	struct udevice *button_gpio_devp;
 	struct uclass *uc;
 	int i = 0;
-	u32 code, state, state_changed = 0;
+	int code, state;
 
 	uclass_id_foreach_dev(UCLASS_BUTTON, button_gpio_devp, uc) {
 		struct button_uc_plat *uc_plat = dev_get_uclass_plat(button_gpio_devp);
+		int *old_state;
+
 		/* Ignore the top-level button node */
 		if (!uc_plat->label)
 			continue;
 		code = button_get_code(button_gpio_devp);
-		if (!code)
+		if (code <= 0)
 			continue;
 
+		old_state = &priv->old_state[i++];
 		state = button_get_state(button_gpio_devp);
-		state_changed = state != priv->old_state[i];
+		if (state < 0)
+			continue;
 
-		if (state_changed) {
+		if (state != *old_state) {
 			debug("%s: %d\n", uc_plat->label, code);
-			priv->old_state[i] = state;
+			*old_state = state;
 			/*
-			 * BUTTON_ON (1) means pressed; input_add_keycode()
-			 * expects a "release" flag, so invert the state.
-			 * Reporting on the press makes arrow keys cancel the
-			 * bootmenu autoboot countdown immediately.
+			 * BUTTON_ON means pressed, while input_add_keycode()
+			 * expects true for a release.
 			 */
-			input_add_keycode(input, code, !state);
+			input_add_keycode(input, code, state == BUTTON_OFF);
 		}
-		i++;
 	}
 	return 0;
 }

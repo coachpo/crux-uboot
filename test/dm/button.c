@@ -9,6 +9,7 @@
 #include <adc.h>
 #include <button.h>
 #include <env.h>
+#include <keyboard.h>
 #include <power/regulator.h>
 #include <power/sandbox_pmic.h>
 #include <asm/gpio.h>
@@ -64,6 +65,110 @@ static int dm_test_button_gpio(struct unit_test_state *uts)
 	return 0;
 }
 DM_TEST(dm_test_button_gpio, UTF_SCAN_PDATA | UTF_SCAN_FDT);
+
+/* Check button transitions and read errors through the keyboard input FIFO. */
+static int dm_test_button_keyboard(struct unit_test_state *uts)
+{
+	struct udevice *button1, *button2, *button5, *kbd;
+	struct keyboard_priv *priv;
+	struct input_config *input;
+	struct gpio_desc gpio1, gpio2;
+	ofnode node1, node2;
+	int pressed;
+
+	if (!IS_ENABLED(CONFIG_BUTTON_KEYBOARD))
+		return -EAGAIN;
+
+	/* Override codes for probing, then restore the shared test fixture. */
+	node1 = ofnode_path("/buttons/btn1");
+	node2 = ofnode_path("/buttons/btn2");
+	ut_assertok(ofnode_write_u32(node1, "linux,code", KEY_1));
+	ut_assertok(ofnode_write_u32(node2, "linux,code", KEY_2));
+	ut_assertok(button_get_by_label("button1", &button1));
+	ut_assertok(button_get_by_label("button2", &button2));
+	ut_assertok(button_get_by_label("button5", &button5));
+	ut_assertok(ofnode_write_u32(node1, "linux,code", BTN_1));
+	ut_assertok(ofnode_write_u32(node2, "linux,code", BTN_2));
+	ut_asserteq(-ENOSYS, button_get_code(button5));
+	ut_assertok(dm_gpio_lookup_name("a3", &gpio1));
+	ut_assertok(dm_gpio_lookup_name("a4", &gpio2));
+	ut_assertok(sandbox_gpio_set_value(gpio1.dev, gpio1.offset, 1));
+	ut_assertok(sandbox_gpio_set_value(gpio2.dev, gpio2.offset, 0));
+	ut_assertok(uclass_get_device_by_name(UCLASS_KEYBOARD,
+					      "button_kbd", &kbd));
+	priv = dev_get_uclass_priv(kbd);
+	input = &priv->input;
+	ut_assertok(keyboard_get_ops(kbd)->start(kbd));
+	ut_asserteq(BUTTON_ON, button_get_state(button5));
+
+	/* The first scan must report a button already held at startup. */
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(1, input_tstc(input));
+	ut_asserteq('1', input_getc(input));
+	ut_asserteq(0, input_tstc(input));
+	pressed = input->num_prev_keycodes;
+	ut_asserteq(1, pressed);
+
+	/* Let the input layer expose any repeats incorrectly sent by the driver. */
+	input_allow_repeats(input, true);
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_assertok(sandbox_gpio_set_value(gpio1.dev, gpio1.offset, 0));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed - 1, input->num_prev_keycodes);
+	ut_assertok(sandbox_gpio_set_value(gpio1.dev, gpio1.offset, 1));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(1, input_tstc(input));
+	ut_asserteq('1', input_getc(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed, input->num_prev_keycodes);
+
+	/* An unclaimed GPIO makes the existing button driver return -EBUSY. */
+	ut_assertok(dm_gpio_free(button1, &gpio1));
+	ut_asserteq(-EBUSY, button_get_state(button1));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed, input->num_prev_keycodes);
+
+	/* A failed read must not shift the state slot of subsequent buttons. */
+	ut_assertok(sandbox_gpio_set_value(gpio2.dev, gpio2.offset, 1));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(1, input_tstc(input));
+	ut_asserteq('2', input_getc(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed + 1, input->num_prev_keycodes);
+	ut_assertok(dm_gpio_request(&gpio1, "button1"));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed + 1, input->num_prev_keycodes);
+
+	ut_assertok(sandbox_gpio_set_value(gpio1.dev, gpio1.offset, 0));
+	ut_assertok(sandbox_gpio_set_value(gpio2.dev, gpio2.offset, 0));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed - 1, input->num_prev_keycodes);
+
+	/* Errors while released must not invent a press or hide the next press. */
+	ut_assertok(dm_gpio_free(button1, &gpio1));
+	ut_asserteq(-EBUSY, button_get_state(button1));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed - 1, input->num_prev_keycodes);
+	ut_assertok(sandbox_gpio_set_value(gpio1.dev, gpio1.offset, 1));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_assertok(dm_gpio_request(&gpio1, "button1"));
+	ut_assertok(input->read_keys(input));
+	ut_asserteq(1, input_tstc(input));
+	ut_asserteq('1', input_getc(input));
+	ut_asserteq(0, input_tstc(input));
+	ut_asserteq(pressed, input->num_prev_keycodes);
+
+	return 0;
+}
+
+DM_TEST(dm_test_button_keyboard, UTF_SCAN_PDATA | UTF_SCAN_FDT);
 
 /* Test obtaining a BUTTON by label */
 static int dm_test_button_label(struct unit_test_state *uts)
