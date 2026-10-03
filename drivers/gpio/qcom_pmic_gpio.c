@@ -37,8 +37,8 @@
 #define REG_SUBTYPE_GPIO_LV_VIN2          0x12
 #define REG_SUBTYPE_GPIO_MV_VIN3          0x13
 
-#define REG_RT_STS             0x10
-#define REG_RT_STS_VAL_MASK    0x1
+#define REG_STATUS             0x08
+#define REG_STATUS_VAL_MASK    0x1
 
 /* MODE_CTL */
 #define REG_CTL		0x40
@@ -53,12 +53,9 @@
 #define REG_CTL_LV_MV_MODE_OUTPUT	0x1
 
 #define REG_DIG_VIN_CTL        0x41
-#define REG_DIG_VIN_MASK       0x7
 #define REG_DIG_VIN_VIN0       0
 
 #define REG_DIG_PULL_CTL       0x42
-#define REG_DIG_PULL_UP_30     0
-#define REG_DIG_PULL_DOWN      4
 #define REG_DIG_PULL_NO_PU     0x5
 
 #define REG_LV_MV_OUTPUT_CTL	0x44
@@ -130,14 +127,14 @@ static int qcom_gpio_set_direction(struct udevice *dev, unsigned int offset,
 
 	_qcom_gpio_set_direction(dev, offset, input, value);
 
+	/* Set the right pull (no pull) */
+	ret = pmic_reg_write(plat->pmic, gpio_base + REG_DIG_PULL_CTL,
+			     REG_DIG_PULL_NO_PU);
+	if (ret < 0)
+		return ret;
+
 	/* Configure output pin drivers if needed */
 	if (!input) {
-		/* Set the right pull (no pull) */
-		ret = pmic_reg_write(plat->pmic, gpio_base + REG_DIG_PULL_CTL,
-				     REG_DIG_PULL_NO_PU);
-		if (ret < 0)
-			return ret;
-
 		/* Select the VIN - VIN0, pin is input so it doesn't matter */
 		ret = pmic_reg_write(plat->pmic, gpio_base + REG_DIG_VIN_CTL,
 				     REG_DIG_VIN_VIN0);
@@ -207,11 +204,11 @@ static int qcom_gpio_get_value(struct udevice *dev, unsigned offset)
 	uint32_t gpio_base = plat->pid + REG_OFFSET(offset);
 	int reg;
 
-	reg = pmic_reg_read(plat->pmic, gpio_base + REG_RT_STS);
+	reg = pmic_reg_read(plat->pmic, gpio_base + REG_STATUS);
 	if (reg < 0)
 		return reg;
 
-	return !!(reg & REG_RT_STS_VAL_MASK);
+	return !!(reg & REG_STATUS_VAL_MASK);
 }
 
 static int qcom_gpio_set_value(struct udevice *dev, unsigned offset,
@@ -349,7 +346,6 @@ static const struct udevice_id qcom_gpio_ids[] = {
 	{ .compatible = "qcom,pm8994-gpio" },	/* 22 GPIO's */
 	{ .compatible = "qcom,pms405-gpio" },
 	{ .compatible = "qcom,pm6125-gpio" },
-	{ .compatible = "qcom,pm8150-gpio" },
 	{ }
 };
 
@@ -365,11 +361,6 @@ U_BOOT_DRIVER(qcom_pmic_gpio) = {
 };
 
 static const struct pinconf_param qcom_pmic_pinctrl_conf_params[] = {
-	{ "bias-disable", PIN_CONFIG_BIAS_DISABLE, 0 },
-	{ "bias-pull-up", PIN_CONFIG_BIAS_PULL_UP, REG_DIG_PULL_UP_30 },
-	{ "bias-pull-down", PIN_CONFIG_BIAS_PULL_DOWN, REG_DIG_PULL_DOWN },
-	{ "input-enable", PIN_CONFIG_INPUT_ENABLE, 1 },
-	{ "power-source", PIN_CONFIG_POWER_SOURCE, 0 },
 	{ "output-high", PIN_CONFIG_OUTPUT_ENABLE, 1 },
 	{ "output-low", PIN_CONFIG_OUTPUT, 0 },
 };
@@ -394,32 +385,9 @@ static const char *qcom_pmic_pinctrl_get_pin_name(struct udevice *dev, unsigned 
 static int qcom_pmic_pinctrl_pinconf_set(struct udevice *dev, unsigned int selector,
 					 unsigned int param, unsigned int arg)
 {
-	struct qcom_pmic_gpio_data *plat = dev_get_plat(dev);
-	u32 gpio_base = plat->pid + REG_OFFSET(selector);
-	u32 pull;
-
-	switch (param) {
-	case PIN_CONFIG_BIAS_DISABLE:
-		pull = REG_DIG_PULL_NO_PU;
-		break;
-	case PIN_CONFIG_BIAS_PULL_UP:
-		pull = REG_DIG_PULL_UP_30;
-		break;
-	case PIN_CONFIG_BIAS_PULL_DOWN:
-		pull = REG_DIG_PULL_DOWN;
-		break;
-	case PIN_CONFIG_POWER_SOURCE:
-		return pmic_reg_write(plat->pmic, gpio_base + REG_DIG_VIN_CTL,
-				      arg & REG_DIG_VIN_MASK);
-	case PIN_CONFIG_INPUT_ENABLE:
-		return _qcom_gpio_set_direction(dev, selector, true, 0);
-	default:
-		/* We only support configuring the pin as an output, low or high */
-		return _qcom_gpio_set_direction(dev, selector, false,
-						param == PIN_CONFIG_OUTPUT_ENABLE);
-	}
-
-	return pmic_reg_write(plat->pmic, gpio_base + REG_DIG_PULL_CTL, pull);
+	/* We only support configuring the pin as an output, either low or high */
+	return _qcom_gpio_set_direction(dev, selector, false,
+					param == PIN_CONFIG_OUTPUT_ENABLE);
 }
 
 static const char *qcom_pmic_pinctrl_get_function_name(struct udevice *dev, unsigned int selector)
