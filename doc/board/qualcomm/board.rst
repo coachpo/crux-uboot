@@ -38,6 +38,28 @@ with appended dtb, so let's mimic linux to satisfy stock bootloader.
 Boards
 ------
 
+Xiaomi Mi 9 Pro 5G (crux)
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Crux uses the Qualcomm SM8150 with the stock XBL/ABL firmware. Build it with::
+
+    make CROSS_COMPILE=aarch64-linux-gnu- O=.output xiaomi-crux_defconfig
+
+The DTB is ``sm8150-xiaomi-crux.dtb``. It is kept in ``arch/arm/dts`` until
+it is available through the upstream devicetree sync. Package U-Boot as an
+Android boot image with its DTB appended, as described above.
+
+This configuration uses the generic Qualcomm environment and describes UFS,
+USB 2.0 peripheral mode, the bootloader-provided framebuffer and PMIC keys.
+It does not require an external UART. Power and Volume Down are mapped to
+Enter and Down respectively. Volume Up is disabled in the U-Boot DT because
+the current PM8150 GPIO driver lacks the required input and bias support.
+The current button keyboard driver reports characters on key release.
+
+USB serial, pstore log inspection and fixed-partition recovery or Android
+boot menus are not enabled by this configuration. These are independent of
+the board hardware description.
+
 Pixel 3 (blueline) and Pixel 3 XL (crosshatch)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 blueline refers to the Google Pixel 3, and crosshatch to the Pixel 3 XL, both

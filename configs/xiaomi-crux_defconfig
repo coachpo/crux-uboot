@@ -1,0 +1,7 @@
+#include "qcom_defconfig"
+
+# The Crux devicetree has not been synced to dts/upstream yet.
+# CONFIG_OF_UPSTREAM is not set
+CONFIG_DEFAULT_DEVICE_TREE="sm8150-xiaomi-crux"
+CONFIG_BUTTON_REMAP_PHONE_KEYS=y
+# CONFIG_REQUIRE_SERIAL_CONSOLE is not set
