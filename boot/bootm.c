@@ -778,6 +778,7 @@ static int bootm_load_os(struct bootm_headers *images, int boot_progress)
 	ulong decomp_len = CONFIG_SYS_BOOTM_LEN;
 	enum bootm_decomp_limit decomp_limit = BOOTM_DECOMP_LIMIT_GLOBAL;
 	ulong flush_start;
+	ulong reserve_len;
 	bool no_overlap;
 	void *load_buf, *image_buf;
 	int err;
@@ -856,6 +857,14 @@ static int bootm_load_os(struct bootm_headers *images, int boot_progress)
 	/* We need the decompressed image size in the next steps */
 	images->os.image_len = load_end - load;
 
+	/*
+	 * DRAM that has to stay clear of the loaded OS image.  For arm64 Linux
+	 * this is enlarged below to cover the kernel BSS as advertised by the
+	 * Image header, so that the ramdisk and the device tree are not placed
+	 * inside memory the kernel will use (and clear) itself.
+	 */
+	reserve_len = load_end - load;
+
 	flush_start = ALIGN_DOWN(load, ARCH_DMA_MINALIGN);
 	flush_cache(flush_start, ALIGN(load_end, ARCH_DMA_MINALIGN) - flush_start);
 
@@ -906,6 +915,14 @@ static int bootm_load_os(struct bootm_headers *images, int boot_progress)
 		images->ep = relocated_addr;
 		images->os.start = relocated_addr;
 		images->os.end = relocated_addr + image_size;
+
+		/*
+		 * image_size covers the whole in-memory footprint of the kernel
+		 * (text, data and BSS), unlike the file size used above.  Keep the
+		 * complete area reserved so that the ramdisk/FDT relocation does
+		 * not pick an address inside the kernel BSS.
+		 */
+		reserve_len = image_size;
 	}
 
 	if (CONFIG_IS_ENABLED(LMB)) {
@@ -913,7 +930,7 @@ static int bootm_load_os(struct bootm_headers *images, int boot_progress)
 
 		load = (phys_addr_t)images->os.load;
 		err = lmb_alloc_mem(LMB_MEM_ALLOC_ADDR, 0, &load,
-				    (load_end - images->os.load), LMB_NONE);
+				    reserve_len, LMB_NONE);
 		if (err) {
 			log_err("Unable to allocate memory %#lx for loading OS\n",
 				images->os.load);
