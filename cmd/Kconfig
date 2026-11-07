@@ -831,6 +831,16 @@ config CRC32_VERIFY
 	help
 	  Add -v option to verify data against a crc32 checksum.
 
+config CMD_CRUX_OTA
+	bool "crux_ota - Crux PE install handoff"
+	depends on ARCH_SNAPDRAGON && BLK && PARTITIONS && FS_EXT4 && SAVE_PREV_BL_FDT_ADDR
+	help
+	  Personal Xiaomi Mi 9 Pro 5G (crux) command for the physical Recovery
+	  container: act on the crux-install/1 state block in the unused tail
+	  of pesystem or on a pemetadata install request, land a staged FIT
+	  into its cache window with readback and neighbor checks, and pass
+	  the ABL device identity to the kernel instead of a FIT's copy.
+
 config CMD_EEPROM
 	bool "eeprom - EEPROM subsystem"
 	depends on DM_I2C || SYS_I2C_LEGACY

@@ -1,0 +1,10 @@
+# Xiaomi Mi 9 Pro 5G (crux) U-Boot for the physical Recovery container.
+#
+# Same board build as xiaomi-crux_defconfig. Only the Recovery container
+# runs the crux-install/1 handoff after "reboot recovery"; the Boot
+# partition keeps the plain menu build.
+
+#include "xiaomi-crux_defconfig"
+
+CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/xiaomi-crux-recovery.env"
+CONFIG_CMD_CRUX_OTA=y
