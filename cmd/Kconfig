@@ -839,7 +839,9 @@ config CMD_CRUX_OTA
 	  container: act on the crux-install/1 state block in the unused tail
 	  of pesystem or on a pemetadata install request, land a staged FIT
 	  into its cache window with readback and neighbor checks, and pass
-	  the ABL device identity to the kernel instead of a FIT's copy.
+	  the ABL device identity to the kernel instead of a FIT's copy. The
+	  Boot partition build (xiaomi-crux-boot_defconfig) uses only the
+	  identity override.
 
 config CMD_EEPROM
 	bool "eeprom - EEPROM subsystem"

@@ -1,0 +1,10 @@
+# Xiaomi Mi 9 Pro 5G (crux) U-Boot for the Boot partition with ABL identity.
+#
+# Same board build as xiaomi-crux_defconfig. Its PE menu entries replace FIT
+# identity tokens with the ABL ones; it never runs the crux-install/1 handoff,
+# which only the Recovery container build (xiaomi-crux-recovery_defconfig) does.
+
+#include "xiaomi-crux_defconfig"
+
+CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/xiaomi-crux-boot.env"
+CONFIG_CMD_CRUX_OTA=y
