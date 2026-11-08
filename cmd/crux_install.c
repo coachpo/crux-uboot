@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Crux PE install handoff (crux-install/1)
+ * Crux PE install landing (crux-install/1)
  *
  * Runs in the physical Recovery container's U-Boot after "reboot recovery".
- * The ROM requests an install through /crux_ota/request on pemetadata. The
- * installer and this command keep their progress in a CRC-protected state
- * block in the unused tail of pesystem and stage the FITs next to it; this
- * command lands a staged FIT into its cache window, reads it back and checks
+ * The TWRP ZIP installer keeps its progress in a CRC-protected state block in
+ * the unused tail of pesystem and stages both FITs next to it; this command
+ * lands the staged FITs into their cache windows, reads them back and checks
  * that every other cache range is unchanged. It also passes the ABL device
- * identity through to the kernel instead of the identity captured in a FIT.
+ * identity through to the kernel instead of the identity captured in a FIT,
+ * and locates the FIT that "fastboot boot" leaves in RAM.
  * The layout and failure stops are described in the Crux workspace document
  * docs/pe13-install-protocol-2026-11-07.md.
  */
@@ -16,7 +16,6 @@
 #include <blk.h>
 #include <command.h>
 #include <env.h>
-#include <fs.h>
 #include <malloc.h>
 #include <mapmem.h>
 #include <memalign.h>
@@ -42,7 +41,6 @@
 #define CRUX_CHUNK_BLKS		0x1000UL
 #define CRUX_MAX_TRIES		2
 #define CRUX_VAL_MAX		48
-#define CRUX_REQUEST		"/crux_ota/request"
 
 struct crux_window {
 	const char *name;
@@ -81,11 +79,6 @@ enum { S_VER, S_TXN, S_STAGE, S_TRIES, S_ROM_CRC, S_REC, S_REC_CRC, S_MSG, S_COU
 static const char *const crux_state_keys[S_COUNT] = {
 	"crux_s_ver", "crux_s_txn", "crux_s_stage", "crux_s_tries",
 	"crux_s_rom_crc", "crux_s_rec", "crux_s_rec_crc", "crux_s_msg",
-};
-
-enum { R_VER, R_TXN, R_ACTION, R_COUNT };
-static const char *const crux_request_keys[R_COUNT] = {
-	"crux_r_ver", "crux_r_txn", "crux_r_action",
 };
 
 static bool crux_value_ok(const char *v, size_t len)
@@ -191,39 +184,10 @@ static int crux_write_state(struct blk_desc *desc, char vals[][CRUX_VAL_MAX])
 	if (blk_dwrite(desc, CRUX_STATE_LBA, 1, out) != 1 ||
 	    blk_dread(desc, CRUX_STATE_LBA, 1, back) != 1 ||
 	    memcmp(out, back, CRUX_BLKSZ)) {
-		printf("crux-ota: state block write/readback failed\n");
+		printf("crux-install: state block write/readback failed\n");
 		return -EIO;
 	}
 	return 0;
-}
-
-static int crux_read_request(struct blk_desc *desc, char vals[][CRUX_VAL_MAX])
-{
-	struct disk_partition info;
-	loff_t size = 0, got = 0;
-	int part, ret;
-	u8 *buf;
-
-	part = part_get_info_by_name(desc, "pemetadata", &info);
-	if (part < 0)
-		return part;
-	if (fs_set_blk_dev_with_part(desc, part) || fs_size(CRUX_REQUEST, &size) ||
-	    size != CRUX_BLKSZ)
-		return -ENOENT;
-	buf = memalign(ARCH_DMA_MINALIGN, CRUX_BLKSZ);
-	if (!buf)
-		return -ENOMEM;
-	ret = fs_set_blk_dev_with_part(desc, part);
-	if (!ret)
-		ret = fs_read(CRUX_REQUEST, map_to_sysmem(buf), 0, CRUX_BLKSZ, &got);
-	if (!ret && got != CRUX_BLKSZ)
-		ret = -EIO;
-	if (!ret)
-		ret = crux_parse(buf, crux_request_keys, R_COUNT, vals);
-	free(buf);
-	if (!ret && (strcmp(vals[R_VER], "1") || !vals[R_TXN][0]))
-		ret = -EINVAL;
-	return ret;
 }
 
 static int crux_crc_range(struct blk_desc *desc, ulong lba, ulong blks, u32 *crc)
@@ -256,7 +220,7 @@ static int crux_snapshot(struct blk_desc *desc, u32 *crcs)
 		if (crux_crc_range(desc, crux_windows[i].lba, crux_windows[i].blks, &crcs[n + i]))
 			return -EIO;
 	if (crcs[CRUX_TWRP_INDEX] != CRUX_TWRP_CRC) {
-		printf("crux-ota: retained TWRP slot CRC %08x differs\n", crcs[CRUX_TWRP_INDEX]);
+		printf("crux-install: retained TWRP slot CRC %08x differs\n", crcs[CRUX_TWRP_INDEX]);
 		return -EINVAL;
 	}
 	return 0;
@@ -283,11 +247,11 @@ static int crux_check_stage(struct blk_desc *desc, const struct crux_window *w, 
 		return -EIO;
 	crc = crc32(0, buf, bytes);
 	if (crc != want) {
-		printf("crux-ota: staged %s FIT CRC %08x, expected %08x\n", w->name, crc, want);
+		printf("crux-install: staged %s FIT CRC %08x, expected %08x\n", w->name, crc, want);
 		return -EBADMSG;
 	}
 	if (fdt_magic(buf) != FDT_MAGIC || fdt_totalsize(buf) > bytes) {
-		printf("crux-ota: staged %s image is not a FIT inside its window\n", w->name);
+		printf("crux-install: staged %s image is not a FIT inside its window\n", w->name);
 		return -EBADMSG;
 	}
 	return 0;
@@ -311,11 +275,11 @@ static int crux_land(struct blk_desc *desc, const bool *land, const u32 *want)
 			continue;
 		if (crux_check_stage(desc, w, want[i]))
 			return written ? -EIO : -EAGAIN;
-		printf("crux-ota: landing %s FIT at 0x%lx x 0x%lx\n", w->name, w->lba, w->blks);
+		printf("crux-install: landing %s FIT at 0x%lx x 0x%lx\n", w->name, w->lba, w->blks);
 		written = true;
 		if (blk_dwrite(desc, w->lba, w->blks, map_sysmem(CRUX_STAGE_ADDR, 0)) != w->blks ||
 		    crux_crc_range(desc, w->lba, w->blks, &crc) || crc != want[i]) {
-			printf("crux-ota: %s window readback failed\n", w->name);
+			printf("crux-install: %s window readback failed\n", w->name);
 			return -EIO;
 		}
 	}
@@ -325,17 +289,16 @@ static int crux_land(struct blk_desc *desc, const bool *land, const u32 *want)
 		if (i >= n && land[i - n])
 			continue;
 		if (before[i] != after[i]) {
-			printf("crux-ota: cache range %d changed (%08x -> %08x)\n", i, before[i], after[i]);
+			printf("crux-install: cache range %d changed (%08x -> %08x)\n", i, before[i], after[i]);
 			return -EIO;
 		}
 	}
 	return 0;
 }
 
-static void crux_action(const char *action, const char *txn)
+static void crux_action(const char *action)
 {
-	env_set("crux_ota_action", action);
-	env_set("crux_ota_txn", txn);
+	env_set("crux_install_action", action);
 }
 
 static int crux_fail(struct blk_desc *desc, char s[][CRUX_VAL_MAX], const char *msg)
@@ -343,84 +306,49 @@ static int crux_fail(struct blk_desc *desc, char s[][CRUX_VAL_MAX], const char *
 	strlcpy(s[S_STAGE], "failed", CRUX_VAL_MAX);
 	strlcpy(s[S_MSG], msg, CRUX_VAL_MAX);
 	crux_write_state(desc, s);
-	printf("crux-ota: transaction %s stopped: %s\n", s[S_TXN], msg);
-	crux_action("stop", s[S_TXN]);
+	printf("crux-install: transaction %s stopped: %s\n", s[S_TXN], msg);
+	crux_action("stop");
 	return CMD_RET_SUCCESS;
 }
 
 static int crux_check(void)
 {
-	char s[S_COUNT][CRUX_VAL_MAX], r[R_COUNT][CRUX_VAL_MAX];
+	char s[S_COUNT][CRUX_VAL_MAX];
 	struct blk_desc *desc = crux_dev();
-	bool have_state, requested, land[ARRAY_SIZE(crux_windows)] = { false, true };
+	bool land[ARRAY_SIZE(crux_windows)] = { false, true };
 	u32 want[ARRAY_SIZE(crux_windows)] = { 0 };
-	const char *stage;
-	char extra[80];
 	int tries, ret;
 
-	env_set("crux_ota_extra", NULL);
-	crux_action("menu", NULL);
+	crux_action("menu");
 	if (!desc || crux_layout(desc)) {
-		printf("crux-ota: LUN0 layout differs; no install handoff\n");
+		printf("crux-install: LUN0 layout differs; nothing to land\n");
 		return CMD_RET_SUCCESS;
 	}
-	have_state = !crux_read_state(desc, s);
-	/* A landing transaction finishes before any request is considered. */
-	requested = (!have_state || strcmp(s[S_STAGE], "land")) &&
-		    !crux_read_request(desc, r) && !strcmp(r[R_ACTION], "install");
-	if (requested && (!have_state || strcmp(s[S_TXN], r[R_TXN]))) {
-		if (have_state)
-			printf("crux-ota: request %s replaces %s (stage %s)\n",
-			       r[R_TXN], s[S_TXN], s[S_STAGE]);
-		memset(s, 0, sizeof(s));
-		strlcpy(s[S_VER], "1", CRUX_VAL_MAX);
-		strlcpy(s[S_TXN], r[R_TXN], CRUX_VAL_MAX);
-		strlcpy(s[S_STAGE], "recovery", CRUX_VAL_MAX);
-		printf("crux-ota: new install request %s\n", s[S_TXN]);
-	} else if (!have_state || !strcmp(s[S_STAGE], "done") || !strcmp(s[S_STAGE], "failed") ||
-		   (!strcmp(s[S_STAGE], "recovery") && !requested)) {
-		/* Nothing pending, finished, or the ROM withdrew its request. */
+	/* No state, or a finished or failed transaction: show the menu. */
+	if (crux_read_state(desc, s) || !strcmp(s[S_STAGE], "done") || !strcmp(s[S_STAGE], "failed"))
 		return CMD_RET_SUCCESS;
-	}
-	stage = s[S_STAGE];
-	if (strcmp(stage, "recovery") && strcmp(stage, "land") && strcmp(stage, "abort")) {
-		printf("crux-ota: transaction %s has unknown stage '%s'\n", s[S_TXN], stage);
-		crux_action("stop", s[S_TXN]);
-		return CMD_RET_SUCCESS;
-	}
-	if (!strcmp(stage, "abort")) {
-		strlcpy(s[S_STAGE], "done", CRUX_VAL_MAX);
-		if (crux_write_state(desc, s))
-			return CMD_RET_SUCCESS;
-		printf("crux-ota: transaction %s aborted before writes; booting PE ROM\n", s[S_TXN]);
-		crux_action("rom", s[S_TXN]);
+	if (strcmp(s[S_STAGE], "land")) {
+		printf("crux-install: transaction %s has unknown stage '%s'\n", s[S_TXN], s[S_STAGE]);
+		crux_action("stop");
 		return CMD_RET_SUCCESS;
 	}
 	tries = (int)dectoul(s[S_TRIES], NULL) + 1;
 	if (tries > CRUX_MAX_TRIES) {
-		printf("crux-ota: transaction %s stage %s already tried %d times\n",
-		       s[S_TXN], stage, tries - 1);
-		crux_action("stop", s[S_TXN]);
+		printf("crux-install: transaction %s already tried landing %d times\n", s[S_TXN], tries - 1);
+		crux_action("stop");
 		return CMD_RET_SUCCESS;
 	}
 	snprintf(s[S_TRIES], CRUX_VAL_MAX, "%d", tries);
 	if (crux_write_state(desc, s))
 		return CMD_RET_SUCCESS;
-	if (!strcmp(stage, "recovery")) {
-		snprintf(extra, sizeof(extra), "androidboot.crux_ota_txn=%s", s[S_TXN]);
-		env_set("crux_ota_extra", extra);
-		printf("crux-ota: transaction %s: starting PE Recovery (try %d)\n", s[S_TXN], tries);
-		crux_action("recovery", s[S_TXN]);
-		return CMD_RET_SUCCESS;
-	}
 	land[0] = !strcmp(s[S_REC], "1");
 	if (crux_crc_value(s[S_ROM_CRC], &want[1]) ||
 	    (land[0] && crux_crc_value(s[S_REC_CRC], &want[0])))
 		return crux_fail(desc, s, "bad-crc-field");
 	ret = crux_land(desc, land, want);
 	if (ret == -EAGAIN) {
-		printf("crux-ota: transaction %s: nothing written (try %d)\n", s[S_TXN], tries);
-		crux_action("stop", s[S_TXN]);
+		printf("crux-install: transaction %s: nothing written (try %d)\n", s[S_TXN], tries);
+		crux_action("stop");
 		return CMD_RET_SUCCESS;
 	}
 	if (ret)
@@ -428,8 +356,8 @@ static int crux_check(void)
 	strlcpy(s[S_STAGE], "done", CRUX_VAL_MAX);
 	if (crux_write_state(desc, s))
 		return CMD_RET_SUCCESS;
-	printf("crux-ota: transaction %s landed; booting PE ROM\n", s[S_TXN]);
-	crux_action("rom", s[S_TXN]);
+	printf("crux-install: transaction %s landed; booting PE ROM\n", s[S_TXN]);
+	crux_action("rom");
 	return CMD_RET_SUCCESS;
 }
 
@@ -465,7 +393,7 @@ static int crux_abl(void)
 	int i;
 
 	if (!args) {
-		printf("crux-ota: no ABL bootargs at prevbl_fdt_addr\n");
+		printf("crux-install: no ABL bootargs at prevbl_fdt_addr\n");
 		return CMD_RET_FAILURE;
 	}
 	copy = strdup(args);
@@ -488,7 +416,7 @@ static int crux_abl(void)
 	free(copy);
 	free(out);
 	if (!seen[0]) {
-		printf("crux-ota: ABL bootargs lack androidboot.serialno\n");
+		printf("crux-install: ABL bootargs lack androidboot.serialno\n");
 		return CMD_RET_FAILURE;
 	}
 	return CMD_RET_SUCCESS;
@@ -501,18 +429,17 @@ static int crux_abl(void)
 static int crux_bootargs(void)
 {
 	const char *abl = env_get("crux_abl_args");
-	const char *extra = env_get("crux_ota_extra");
 	const char *role = env_get("crux_uboot_role");
 	const char *dt = crux_chosen_bootargs(working_fdt);
 	char *copy, *cursor, *token, *out;
 
 	if (!dt || !abl || !*abl || !role || !crux_value_ok(role, strlen(role))) {
-		printf("crux-ota: missing %s; not booting\n",
+		printf("crux-install: missing %s; not booting\n",
 		       !dt ? "FIT bootargs" : !role ? "U-Boot role" : "ABL identity");
 		return CMD_RET_FAILURE;
 	}
 	copy = strdup(dt);
-	out = calloc(1, strlen(dt) + strlen(abl) + strlen(role) + (extra ? strlen(extra) : 0) + 48);
+	out = calloc(1, strlen(dt) + strlen(abl) + strlen(role) + 48);
 	if (!copy || !out) {
 		free(copy);
 		free(out);
@@ -529,10 +456,6 @@ static int crux_bootargs(void)
 	strcat(out, abl);
 	strcat(out, " androidboot.crux_uboot=");
 	strcat(out, role);
-	if (extra && *extra) {
-		strcat(out, " ");
-		strcat(out, extra);
-	}
 	env_set("bootargs", out);
 	free(copy);
 	free(out);
@@ -553,24 +476,24 @@ static int crux_fitaddr(void)
 		u32 kernel = get_unaligned_le32(base + 8), page = get_unaligned_le32(base + 36);
 
 		if (page < 2048 || page > 16384 || (page & (page - 1)) || !kernel) {
-			printf("crux-ota: unexpected Android boot image header\n");
+			printf("crux-install: unexpected Android boot image header\n");
 			return CMD_RET_FAILURE;
 		}
 		addr += page;
 		base = map_sysmem(addr, 4096);
 		if (fdt_magic(base) != FDT_MAGIC || fdt_totalsize(base) > kernel) {
-			printf("crux-ota: boot image kernel is not a FIT\n");
+			printf("crux-install: boot image kernel is not a FIT\n");
 			return CMD_RET_FAILURE;
 		}
 	} else if (fdt_magic(base) != FDT_MAGIC) {
-		printf("crux-ota: no FIT in the fastboot buffer\n");
+		printf("crux-install: no FIT in the fastboot buffer\n");
 		return CMD_RET_FAILURE;
 	}
 	env_set_hex("crux_fit_addr", addr);
 	return CMD_RET_SUCCESS;
 }
 
-static int do_crux_ota(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
+static int do_crux_install(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	if (argc != 2)
 		return CMD_RET_USAGE;
@@ -585,9 +508,9 @@ static int do_crux_ota(struct cmd_tbl *cmdtp, int flag, int argc, char *const ar
 	return CMD_RET_USAGE;
 }
 
-U_BOOT_CMD(crux_ota, 2, 0, do_crux_ota,
-	   "Crux PE install handoff (crux-install/1)",
-	   "check    - act on the pesystem-tail state or the pemetadata request\n"
-	   "crux_ota abl      - save the ABL identity bootargs\n"
-	   "crux_ota bootargs - set bootargs from the working FIT DT and ABL identity\n"
-	   "crux_ota fitaddr  - set crux_fit_addr to the FIT in the fastboot buffer");
+U_BOOT_CMD(crux_install, 2, 0, do_crux_install,
+	   "Crux PE install landing (crux-install/1)",
+	   "check    - land the FITs a TWRP ZIP install staged in the pesystem tail\n"
+	   "crux_install abl      - save the ABL identity bootargs\n"
+	   "crux_install bootargs - set bootargs from the working FIT DT and ABL identity\n"
+	   "crux_install fitaddr  - set crux_fit_addr to the FIT in the fastboot buffer");

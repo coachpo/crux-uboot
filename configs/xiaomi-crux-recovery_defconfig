@@ -7,4 +7,4 @@
 #include "xiaomi-crux_defconfig"
 
 CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/xiaomi-crux-recovery.env"
-CONFIG_CMD_CRUX_OTA=y
+CONFIG_CMD_CRUX_INSTALL=y
