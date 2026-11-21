@@ -1,0 +1,21 @@
+# Crux U-Boot source checkout
+
+## Scope and source locations
+
+- This is the maintained personal Crux U-Boot (`master`). Check `git status --short --branch` before editing and preserve existing working-tree changes. The deployed binaries, their symbols and hashes are in Obsidian 《Crux 组件身份与保留件》; do not assume the current HEAD built them.
+- `configs/xiaomi-crux_defconfig` selects the Crux board and phone options; `board/qualcomm/xiaomi-crux.env` owns its menu, payload loading and Linux handoff environment. It also builds the host `mkimage` the PE and TWRP FIT packaging uses.
+- `configs/xiaomi-crux-recovery_defconfig` builds the U-Boot for the physical Recovery container: it adds `cmd/crux_install.c` (the crux-install/1 landing of a staged TWRP ZIP install, ABL identity override and `fastboot boot` FIT lookup) and `board/qualcomm/xiaomi-crux-recovery.env`, a full copy of the base environment plus the install hooks and `crux_uboot_role=recovery-container-crux-install-1`. The signed ZIP installer refuses any other role.
+- `configs/xiaomi-crux-boot_defconfig` builds the Boot partition variant: `board/qualcomm/xiaomi-crux-boot.env` is the base environment plus the ABL identity override (`crux_install abl`, and `crux_install bootargs` in PE menu entries 2 and 4) and `crux_uboot_role=boot-crux-identity-1`. It never lands an install. Keep the shared entries of all three environments in step.
+- The Crux devicetree is `arch/arm/dts/sm8150-xiaomi-crux.dts`. The defconfigs keep `CONFIG_OF_UPSTREAM` disabled and build this local DT. Do not edit the read-only `dts/upstream/` subtree.
+- Follow neighbouring Qualcomm phone implementations and this tree's conventions for board changes. The board-only upstream candidate is the separate branch `crux-upstream-minimal`; keep personal integration policy out of that series.
+- Shared device-operation and development rules are in the [workspace guide](../AGENTS.md); use the watchdog procedure (Obsidian 《Crux 内核调试 watchdog 流程》) for kernel handoffs.
+
+## Build, images and CI
+
+- `tools/crux/build-images.sh OUT [TWRP_PROVEN_IMG]` builds all three defconfigs, checks every environment line is compiled in full and each variant names its role, and packages the Boot image (`OUT/boot/boot.img`) and the Recovery container (`OUT/recovery/recovery.img`, or only its prefix without the rescue twrp-proven image). Both are 128 MiB partition images for ABL `fastboot flash boot|recovery`. See [tools/crux/README.md](tools/crux/README.md) for the recipes and the Mac environment.
+- `.github/workflows/crux-uboot.yml` runs the same script on a standard GitHub runner (artifact; a prerelease only with a tag input). Dispatching it, pushing a tag or publishing needs the owner's authorization. The repository `.gitignore` ignores dotfiles, `*.img` and `*.bin`: add new workflow files with `git add -f`.
+- On Apple Silicon macOS, use Homebrew GNU make (`gmake`), the `aarch64-unknown-linux-gnu-` cross toolchain and OpenSSL 3 (`CPATH`/`LIBRARY_PATH` as in the tool README). `doc/board/qualcomm/board.rst` describes the generic flow. `SOURCE_DATE_EPOCH` needs GNU `date`, so Mac builds embed the build time; Linux builds are reproducible.
+- Keep every environment value on one physical line: the Mac text-environment build path has produced truncated values from backslash continuations. `check-env.py` catches it.
+- A new build is a new binary. Before flashing, chainload its `u-boot.bin` from the running Boot U-Boot into RAM and check version, environment and role; flashing the Recovery container replaces whatever Recovery holds.
+- Crux keeps `CONFIG_CMD_PSTORE_FDT` disabled. MIUI/TWRP and source-derived PE DTs supply their own ramoops contract; do not inject a second device (it duplicates the reservation and collides with XBL/AOP regions).
+- The USB ACM `stdio_dev` must be zero-initialized, its transmit path must remain nonblocking, and RX completion must not re-queue a request after `-ESHUTDOWN`. Rationale is in Obsidian 《Crux U-Boot 启动与维护》（设计理由一节）.

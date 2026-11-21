@@ -1,0 +1,83 @@
+name: Crux U-Boot images
+
+# Builds the three Crux defconfigs and packages the Boot partition image
+# (clean base, ABL `fastboot flash boot`) and the Recovery container prefix.
+# The full Recovery container needs the rescue twrp-proven image and is
+# packaged locally with tools/crux/build-images.sh OUT TWRP_PROVEN_IMG.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish a prerelease with this tag (empty: workflow artifact only)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: crux-uboot-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CROSS_COMPILE: aarch64-linux-gnu-
+    steps:
+      - name: Choose the output directory
+        run: echo "OUT=$RUNNER_TEMP/crux-uboot" >> "$GITHUB_ENV"
+
+      - name: Check out the U-Boot sources with history (setlocalversion needs it)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential device-tree-compiler flex \
+            gcc-aarch64-linux-gnu libgnutls28-dev libssl-dev python3-dev python3-pyelftools \
+            python3-setuptools swig uuid-dev
+
+      - name: Build and package
+        run: tools/crux/build-images.sh "$OUT"
+
+      - name: Upload images and symbols as workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: crux-uboot-${{ github.run_id }}
+          path: |
+            ${{ env.OUT }}/boot/
+            ${{ env.OUT }}/recovery/
+            ${{ env.OUT }}/symbols-*/
+            ${{ env.OUT }}/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Sign build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            ${{ env.OUT }}/boot/boot.img
+            ${{ env.OUT }}/recovery/recovery-prefix.img
+
+      - name: Publish a prerelease
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          cp "$OUT/boot/boot.img" "$OUT/crux-uboot-boot.img"
+          cp "$OUT/recovery/recovery-prefix.img" "$OUT/crux-uboot-recovery-prefix.img"
+          gh release create "$RELEASE_TAG" --prerelease --target "$GITHUB_SHA" \
+            --title "Crux U-Boot ($RELEASE_TAG)" \
+            --notes "Boot image for ABL fastboot flash boot; Recovery container prefix (package the full container locally with the rescue twrp-proven image). U-Boot $(git describe --always)." \
+            "$OUT/crux-uboot-boot.img" "$OUT/crux-uboot-recovery-prefix.img" \
+            "$OUT/boot/boot-image.json" "$OUT/recovery/container.json" "$OUT/SHA256SUMS"
