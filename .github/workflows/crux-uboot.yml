@@ -40,6 +40,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch the upstream release tags (the version string counts from them)
+        run: git fetch --quiet --tags https://github.com/u-boot/u-boot.git
+
       - name: Install the build dependencies
         run: |
           sudo apt-get update

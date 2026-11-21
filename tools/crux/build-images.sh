@@ -31,7 +31,8 @@ for config in xiaomi-crux xiaomi-crux-boot xiaomi-crux-recovery; do
     "$make" O="$out/$config" CROSS_COMPILE="$CROSS_COMPILE" "${config}_defconfig"
     "$make" O="$out/$config" CROSS_COMPILE="$CROSS_COMPILE" -j"$jobs"
     mkdir "$out/symbols-$config"
-    cp "$out/$config"/{u-boot,u-boot.map,u-boot-nodtb.bin,u-boot.dtb,u-boot.bin,.config} "$out/symbols-$config/"
+    cp "$out/$config"/{u-boot,u-boot.map,u-boot-nodtb.bin,u-boot.dtb,u-boot.bin} "$out/symbols-$config/"
+    cp "$out/$config/.config" "$out/symbols-$config/config"
 done
 python3 "$here/check-env.py" board/qualcomm/xiaomi-crux.env "$out/xiaomi-crux/u-boot-nodtb.bin" -
 python3 "$here/check-env.py" board/qualcomm/xiaomi-crux-boot.env "$out/xiaomi-crux-boot/u-boot-nodtb.bin" boot-crux-identity-1
