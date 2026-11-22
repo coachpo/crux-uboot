@@ -36,8 +36,6 @@
 #define CRUX_STATE_LBA		(CRUX_PESYSTEM_LBA + 0xf0000UL)
 #define CRUX_CACHE_LBA		0x30000UL
 #define CRUX_CACHE_BLKS		0x18000UL
-#define CRUX_TWRP_INDEX		2
-#define CRUX_TWRP_CRC		0xeffcee45U
 #define CRUX_STAGE_ADDR		0xc0000000UL
 #define CRUX_VERIFY_ADDR	0xd0000000UL
 #define CRUX_CHUNK_BLKS		0x1000UL
@@ -63,7 +61,7 @@ static const struct {
 } crux_neighbors[] = {
 	{ 0x30000, 0x28bd },	/* former MIUI slot, unused */
 	{ 0x328bd, 0x1743 },
-	{ 0x34000, 0x2924 },	/* retained TWRP, CRUX_TWRP_CRC */
+	{ 0x34000, 0x2924 },	/* former TWRP slot, unused */
 	{ 0x36924, 0x16dc },
 	{ 0x3bb00, 0x500 },
 	{ 0x3f100, 0x8f00 },
@@ -221,10 +219,6 @@ static int crux_snapshot(struct blk_desc *desc, u32 *crcs)
 	for (i = 0; i < ARRAY_SIZE(crux_windows); i++)
 		if (crux_crc_range(desc, crux_windows[i].lba, crux_windows[i].blks, &crcs[n + i]))
 			return -EIO;
-	if (crcs[CRUX_TWRP_INDEX] != CRUX_TWRP_CRC) {
-		printf("crux-install: retained TWRP slot CRC %08x differs\n", crcs[CRUX_TWRP_INDEX]);
-		return -EINVAL;
-	}
 	return 0;
 }
 
