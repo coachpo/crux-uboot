@@ -12,9 +12,9 @@
 
 ## Build, images and CI
 
-- `tools/crux/build-images.sh OUT [TWRP_PROVEN_IMG]` builds all three defconfigs, checks every environment line is compiled in full and each variant names its role, and packages the Boot image (`OUT/boot/boot.img`) and the Recovery container (`OUT/recovery/recovery.img`, or only its prefix without the rescue twrp-proven image). Both are 128 MiB partition images for ABL `fastboot flash boot|recovery`. See [tools/crux/README.md](tools/crux/README.md) for the recipes and the Mac environment.
+- `tools/crux/build-images.sh OUT [TWRP_PROVEN_IMG]` builds the same pinned Ubuntu 22.04 x86_64 candidate on OrbStack and CI. Compare Boot and the Recovery prefix/body before using the full container recipe; the private rescue base and full container stay local. See [tools/crux/README.md](tools/crux/README.md) for inputs and commands.
 - `.github/workflows/crux-uboot.yml` runs the same script on a standard GitHub runner (artifact; a prerelease only with a tag input). Dispatching it, pushing a tag or publishing needs the owner's authorization. The repository `.gitignore` ignores dotfiles, `*.img` and `*.bin`: add new workflow files with `git add -f`.
-- On Apple Silicon macOS, use Homebrew GNU make (`gmake`), the `aarch64-unknown-linux-gnu-` cross toolchain and OpenSSL 3 (`CPATH`/`LIBRARY_PATH` as in the tool README). `doc/board/qualcomm/board.rst` describes the generic flow. `SOURCE_DATE_EPOCH` needs GNU `date`, so Mac builds embed the build time; Linux builds are reproducible.
+- Do not replace the Mac-native PE packaging `mkimage` with the Linux binary built here. These candidates and their symbols are not replacements for the retained deployed set without separate device acceptance.
 - Keep every environment value on one physical line: the Mac text-environment build path has produced truncated values from backslash continuations. `check-env.py` catches it.
 - A new build is a new binary. Before flashing, chainload its `u-boot.bin` from the running Boot U-Boot into RAM and check version, environment and role; flashing the Recovery container replaces whatever Recovery holds.
 - Crux keeps `CONFIG_CMD_PSTORE_FDT` disabled. MIUI/TWRP and source-derived PE DTs supply their own ramoops contract; do not inject a second device (it duplicates the reservation and collides with XBL/AOP regions).

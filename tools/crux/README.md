@@ -24,30 +24,48 @@ From the repository root. `host-tools.sh` fetches the pinned
 `PixelExperience/external_avb@78fc9d38` (the commits the PE13 source lock pins)
 into `~/.cache/crux-host-tools`; the recipes check their SHA-256.
 
-macOS (Apple Silicon, Homebrew `make`, `aarch64-unknown-linux-gnu` and `openssl@3`). OpenSSL 4
-dropped the ENGINE API the host tools use, so `openssl@3` must come first when Homebrew
-also links `openssl@4` (`tools/Makefile` asks `pkg-config` for the flags):
+Build the flashable candidates on Ubuntu 22.04 x86_64, either in OrbStack
+`cruxbuild` or on the standard GitHub runner. Install the same Ubuntu host
+packages listed in [the workflow](../../.github/workflows/crux-uboot.yml).
+Use a full checkout of the intended commit; ensure it has the original
+annotated upstream tag:
 
 ```sh
-export PATH="/opt/homebrew/bin:$PATH"
-export PKG_CONFIG_PATH="/opt/homebrew/opt/openssl@3/lib/pkgconfig"
-export CPATH="/opt/homebrew/opt/openssl@3/include:/opt/homebrew/include"
-export LIBRARY_PATH="/opt/homebrew/opt/openssl@3/lib:/opt/homebrew/lib"
-CROSS_COMPILE=aarch64-unknown-linux-gnu- tools/crux/build-images.sh .output-crux ~/Crux-Rescue/twrp-proven/recovery.img
+git fetch --no-tags https://github.com/u-boot/u-boot.git tag v2026.10-rc5
+tools/crux/build-images.sh OUT
+# To also assemble the full physical Recovery container:
+tools/crux/build-images.sh OUT_WITH_RESCUE /path/to/twrp-proven/recovery.img
 ```
 
-Linux: `CROSS_COMPILE=aarch64-linux-gnu- tools/crux/build-images.sh OUT [TWRP_PROVEN_IMG]`.
+From the Mac, use `orb -m cruxbuild bash` and the commands above in the
+VM-visible checkout. Pass the VM-visible path to
+`~/Crux-Rescue/twrp-proven/recovery.img` only for the full container.
+The resulting `mkimage` is a Linux executable. A previously built native
+Mac `mkimage` used by PE packaging is separate; do not replace it with
+this binary.
 
 `build-images.sh` builds every configuration into `OUT/<config>/`, copies the
 symbols to `OUT/symbols-<config>/`, checks with `check-env.py` that every
 environment line is compiled in full (the Mac text-environment path has
 truncated values before) and that each variant names its role, then packages
-both images and writes `OUT/SHA256SUMS`. Without the twrp-proven image it
-writes only `recovery/recovery-prefix.img`. With GNU `date` it sets
-`SOURCE_DATE_EPOCH` to the HEAD commit time, so Linux builds are reproducible.
+both images and writes `OUT/SHA256SUMS`. It always emits
+`recovery/recovery-prefix.img` and `recovery/uboot-body.bin`; those two
+files do not use the rescue base. Only the local full-container build adds
+`recovery/recovery.img` and the splice/rollback blocks. Do not publish them.
 
 The workflow `.github/workflows/crux-uboot.yml` runs the same script on a
 standard GitHub runner (workflow artifact; a prerelease only with a tag input).
+Both paths check the same kernel.org GCC 13.2.0/binutils archive by SHA-256,
+verify the version tag, fix the UTC timestamp to the HEAD commit time, and
+map source and output prefixes in the binaries and symbols. Ubuntu host
+packages (including Python/zlib for packaging) still receive distro updates.
+The build scans the raw payloads, symbols and public image files for host
+paths and ABL identity before upload.
+
+For a matching-commit comparison, run `cmp` on the two
+`symbols-xiaomi-crux-{boot,recovery}/u-boot.bin` files, `boot/boot.img`,
+`recovery/recovery-prefix.img` and `recovery/uboot-body.bin`. Neither an
+identical build nor this comparison upgrades any deployed image.
 
 A new build is a new binary. Before flashing, chainload its `u-boot.bin` from
 the running Boot U-Boot over U-Boot fastboot into RAM and check version,

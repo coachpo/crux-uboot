@@ -27,10 +27,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
-    env:
-      CROSS_COMPILE: aarch64-linux-gnu-
     steps:
       - name: Choose the output directory
         run: echo "OUT=$RUNNER_TEMP/crux-uboot" >> "$GITHUB_ENV"
@@ -40,15 +38,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch the upstream release tags (the version string counts from them)
-        run: git fetch --quiet --tags https://github.com/u-boot/u-boot.git
+      - name: Fetch the verified upstream version baseline tag
+        run: git fetch --quiet --no-tags https://github.com/u-boot/u-boot.git tag v2026.10-rc5
 
       - name: Install the build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential device-tree-compiler flex \
-            gcc-aarch64-linux-gnu libgnutls28-dev libssl-dev python3-dev python3-pyelftools \
-            python3-setuptools swig uuid-dev
+          sudo apt-get install -y bc bison build-essential curl flex \
+            libgnutls28-dev libssl-dev python3-dev python3-pyelftools \
+            python3-setuptools swig uuid-dev xz-utils
 
       - name: Build and package
         run: tools/crux/build-images.sh "$OUT"

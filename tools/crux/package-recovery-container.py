@@ -143,7 +143,9 @@ def main():
     nodtb = args.uboot_nodtb.read_bytes()
     dtb = args.uboot_dtb.read_bytes()
     require(dtb[:4] == bytes.fromhex("d00dfeed"), "u-boot.dtb is not a DT")
-    body = gzip.compress(nodtb, compresslevel=9, mtime=0) + dtb
+    compressed = bytearray(gzip.compress(nodtb, compresslevel=9, mtime=0))
+    compressed[9] = 0xff  # Preserve the accepted gzip OS byte across Python versions.
+    body = bytes(compressed) + dtb
     (out / "uboot-body.bin").write_bytes(body)
     with tempfile.TemporaryDirectory() as directory:
         prefix_path = Path(directory) / "prefix.img"
@@ -167,8 +169,8 @@ def main():
               "body_bytes": len(body), "body_sha256": sha256(body), "prefix_bytes": len(prefix),
               "prefix_sha256": sha256(prefix), "v1_id": new["id"].hex(), "base_sha256": BASE_SHA256,
               "lun": 0, "partition_lba": hex(RECOVERY_LBA), "partition_blocks": hex(PARTITION_BYTES // BLOCK)}
+    (out / "recovery-prefix.img").write_bytes(prefix)
     if args.prefix_only:
-        (out / "recovery-prefix.img").write_bytes(prefix)
         record["complete"] = False
         (out / "container.json").write_text(json.dumps(record, indent=2) + "\n")
         print(json.dumps(record, indent=2))
