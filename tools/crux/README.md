@@ -24,12 +24,15 @@ From the repository root. `host-tools.sh` fetches the pinned
 `PixelExperience/external_avb@78fc9d38` (the commits the PE13 source lock pins)
 into `~/.cache/crux-host-tools`; the recipes check their SHA-256.
 
-macOS (Apple Silicon, Homebrew `make`, `aarch64-unknown-linux-gnu` and `openssl@3`):
+macOS (Apple Silicon, Homebrew `make`, `aarch64-unknown-linux-gnu` and `openssl@3`). OpenSSL 4
+dropped the ENGINE API the host tools use, so `openssl@3` must come first when Homebrew
+also links `openssl@4` (`tools/Makefile` asks `pkg-config` for the flags):
 
 ```sh
 export PATH="/opt/homebrew/bin:$PATH"
-export CPATH="/opt/homebrew/include:/opt/homebrew/opt/openssl@3/include"
-export LIBRARY_PATH="/opt/homebrew/lib:/opt/homebrew/opt/openssl@3/lib"
+export PKG_CONFIG_PATH="/opt/homebrew/opt/openssl@3/lib/pkgconfig"
+export CPATH="/opt/homebrew/opt/openssl@3/include:/opt/homebrew/include"
+export LIBRARY_PATH="/opt/homebrew/opt/openssl@3/lib:/opt/homebrew/lib"
 CROSS_COMPILE=aarch64-unknown-linux-gnu- tools/crux/build-images.sh .output-crux ~/Crux-Rescue/twrp-proven/recovery.img
 ```
 

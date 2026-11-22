@@ -61,7 +61,7 @@ static const struct {
 	ulong lba;
 	ulong blks;
 } crux_neighbors[] = {
-	{ 0x30000, 0x28bd },	/* MIUI */
+	{ 0x30000, 0x28bd },	/* former MIUI slot, unused */
 	{ 0x328bd, 0x1743 },
 	{ 0x34000, 0x2924 },	/* retained TWRP, CRUX_TWRP_CRC */
 	{ 0x36924, 0x16dc },
