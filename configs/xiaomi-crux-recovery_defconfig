@@ -2,7 +2,8 @@
 #
 # Same board build as xiaomi-crux_defconfig. Only the Recovery container
 # runs the crux-install/1 handoff after "reboot recovery"; the Boot
-# partition keeps the plain menu build.
+# partition uses xiaomi-crux-boot_defconfig, which adds the ABL identity to
+# its PE entries but never runs the handoff.
 
 #include "xiaomi-crux_defconfig"
 

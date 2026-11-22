@@ -9,8 +9,10 @@
  * that every other cache range is unchanged. It also passes the ABL device
  * identity through to the kernel instead of the identity captured in a FIT,
  * and locates the FIT that "fastboot boot" leaves in RAM.
- * The layout and failure stops are described in the Crux workspace document
- * docs/pe13-install-protocol-2026-11-07.md.
+ * The layout and failure stops are shared with the PE13 installer
+ * (crux-pe13-distributed installer/crux_installer.c) and described in the
+ * Crux Obsidian note on the signed crux-install/1 ZIP (see the workspace
+ * AGENTS.md).
  */
 
 #include <blk.h>
