@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # Build the three Crux U-Boot configurations and package their partition images.
 #
-#   tools/crux/build-images.sh OUT_DIR [TWRP_PROVEN_RECOVERY_IMG]
+#   tools/crux/build-images.sh OUT_DIR
 #
 # Run from a clean, full checkout on Ubuntu 22.04 x86_64.
 # Writes OUT_DIR/{xiaomi-crux,xiaomi-crux-boot,xiaomi-crux-recovery}/ build trees,
 # OUT_DIR/symbols-*/, OUT_DIR/boot/boot.img (flash with ABL `fastboot flash boot`),
-# OUT_DIR/recovery/recovery.img when the rescue twrp-proven image is given
-# (`fastboot flash recovery`; otherwise only recovery-prefix.img), the host
-# mkimage in OUT_DIR/xiaomi-crux/tools/ and OUT_DIR/SHA256SUMS. No device access.
+# OUT_DIR/recovery/recovery.img (`fastboot flash recovery`), the host mkimage in
+# OUT_DIR/xiaomi-crux/tools/ and OUT_DIR/SHA256SUMS. No device access.
 set -euo pipefail
 
 out=${1:?OUT_DIR}
-twrp_proven=${2:-}
 here=$(cd -- "$(dirname -- "$0")" && pwd -P)
 src=$(pwd -P)
 test "$(uname -sm)" = "Linux x86_64"
@@ -35,9 +33,6 @@ if [[ -e .scmversion ]] || (( ${#version_overrides[@]} )); then
     exit 1
 fi
 test -e "$out" && { echo "build-images: $out exists" >&2; exit 1; }
-if [[ -n $twrp_proven ]]; then
-    twrp_proven=$(realpath "$twrp_proven")
-fi
 mkdir -p "$out"
 out=$(cd -- "$out" && pwd -P)
 jobs=$(getconf _NPROCESSORS_ONLN)
@@ -83,12 +78,7 @@ python3 "$here/check-env.py" board/qualcomm/xiaomi-crux-recovery.env "$out/xiaom
 python3 "$here/build-boot-image.py" --mkbootimg "$MKBOOTIMG" --avbtool "$AVBTOOL" \
     --uboot-nodtb "$out/symbols-xiaomi-crux-boot/u-boot-nodtb.bin" \
     --uboot-dtb "$out/symbols-xiaomi-crux-boot/u-boot.dtb" --out "$out/boot" > /dev/null
-if [[ -n $twrp_proven ]]; then
-    source_args=(--twrp-proven "$twrp_proven")
-else
-    source_args=(--prefix-only)
-fi
-python3 "$here/package-recovery-container.py" --mkbootimg "$MKBOOTIMG" "${source_args[@]}" \
+python3 "$here/package-recovery-container.py" --mkbootimg "$MKBOOTIMG" --avbtool "$AVBTOOL" \
     --uboot-nodtb "$out/symbols-xiaomi-crux-recovery/u-boot-nodtb.bin" \
     --uboot-dtb "$out/symbols-xiaomi-crux-recovery/u-boot.dtb" --output-dir "$out/recovery" > /dev/null
 python3 "$here/check-public.py" "$out"
@@ -98,4 +88,4 @@ python3 "$here/check-public.py" "$out"
         shasum -a 256 "$file" 2>/dev/null || sha256sum "$file"
     done
 ) > "$out/SHA256SUMS"
-grep -E ' (boot/boot.img|recovery/recovery(-prefix)?.img)$' "$out/SHA256SUMS"
+grep -E ' (boot/boot.img|recovery/recovery.img)$' "$out/SHA256SUMS"

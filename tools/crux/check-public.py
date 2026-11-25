@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan the U-Boot candidates and public assets, not the private rescue base."""
+"""Scan the U-Boot candidates and every public image asset for host paths and ABL identity."""
 import argparse
 from pathlib import Path
 import re
@@ -16,8 +16,7 @@ def scan(out):
     # Symbols include the uncompressed U-Boot payload/DTs in the two images.
     files = [p for group in sorted(out.glob("symbols-*")) for p in sorted(group.iterdir())]
     files += sorted((out / "boot").iterdir())
-    files += [out / "recovery" / name
-              for name in ("recovery-prefix.img", "uboot-body.bin", "container.json")]
+    files += sorted((out / "recovery").iterdir())
     for path in files:
         data = path.read_bytes()
         if any(prefix in data for prefix in HOST_PATHS) or HOST_EMAIL.search(data):

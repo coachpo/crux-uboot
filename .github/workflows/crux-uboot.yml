@@ -1,9 +1,8 @@
 name: Crux U-Boot images
 
 # Builds the three Crux defconfigs and packages the Boot partition image
-# (clean base, ABL `fastboot flash boot`) and the Recovery container prefix.
-# The full Recovery container needs the rescue twrp-proven image and is
-# packaged locally with tools/crux/build-images.sh OUT TWRP_PROVEN_IMG.
+# (ABL `fastboot flash boot`) and the physical Recovery container (ABL
+# `fastboot flash recovery`), both from the build and the pinned host tools only.
 on:
   workflow_dispatch:
     inputs:
@@ -67,7 +66,7 @@ jobs:
         with:
           subject-path: |
             ${{ env.OUT }}/boot/boot.img
-            ${{ env.OUT }}/recovery/recovery-prefix.img
+            ${{ env.OUT }}/recovery/recovery.img
 
       - name: Publish a prerelease
         if: inputs.release_tag != ''
@@ -76,9 +75,9 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           cp "$OUT/boot/boot.img" "$OUT/crux-uboot-boot.img"
-          cp "$OUT/recovery/recovery-prefix.img" "$OUT/crux-uboot-recovery-prefix.img"
+          cp "$OUT/recovery/recovery.img" "$OUT/crux-uboot-recovery.img"
           gh release create "$RELEASE_TAG" --prerelease --target "$GITHUB_SHA" \
             --title "Crux U-Boot ($RELEASE_TAG)" \
-            --notes "Boot image for ABL fastboot flash boot; Recovery container prefix (package the full container locally with the rescue twrp-proven image). U-Boot $(git describe --always)." \
-            "$OUT/crux-uboot-boot.img" "$OUT/crux-uboot-recovery-prefix.img" \
+            --notes "Boot image for ABL fastboot flash boot; physical Recovery container for ABL fastboot flash recovery. U-Boot $(git describe --always)." \
+            "$OUT/crux-uboot-boot.img" "$OUT/crux-uboot-recovery.img" \
             "$OUT/boot/boot-image.json" "$OUT/recovery/container.json" "$OUT/SHA256SUMS"

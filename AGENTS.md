@@ -12,7 +12,7 @@
 
 ## Build, images and CI
 
-- `tools/crux/build-images.sh OUT [TWRP_PROVEN_IMG]` builds the same pinned Ubuntu 22.04 x86_64 candidate on OrbStack and CI. Compare Boot and the Recovery prefix/body before using the full container recipe; the private rescue base and full container stay local. See [tools/crux/README.md](tools/crux/README.md) for inputs and commands.
+- `tools/crux/build-images.sh OUT` builds the same pinned Ubuntu 22.04 x86_64 candidate, Boot image and full Recovery container included, on OrbStack and CI from the build and pinned host tools only. Compare both images between the two before use. See [tools/crux/README.md](tools/crux/README.md) for inputs and commands.
 - `.github/workflows/crux-uboot.yml` runs the same script on a standard GitHub runner (artifact; a prerelease only with a tag input). Dispatching it, pushing a tag or publishing needs the owner's authorization. The repository `.gitignore` ignores dotfiles, `*.img` and `*.bin`: add new workflow files with `git add -f`.
 - Do not replace the Mac-native PE packaging `mkimage` with the Linux binary built here. These candidates and their symbols are not replacements for the retained deployed set without separate device acceptance.
 - Keep every environment value on one physical line: the Mac text-environment build path has produced truncated values from backslash continuations. `check-env.py` catches it.
