@@ -37,9 +37,11 @@ tools/crux/build-images.sh OUT
 ```
 
 From the Mac, use `orb -m cruxbuild bash` and the commands above in the
-VM-visible checkout. The resulting `mkimage` is a Linux executable. A previously built native
-Mac `mkimage` used by PE packaging is separate; do not replace it with
-this binary.
+VM-visible checkout. The resulting `mkimage` is a Linux executable. PE path B
+packages on the Mac with a Mach-O `mkimage` built from this checkout with the
+tools-only configuration, as the
+[Mac packaging tools](https://github.com/coachpo/crux-pe13-distributed/blob/main/local/README.md#mac-packaging-tools)
+describe; do not replace it with this binary.
 
 `build-images.sh` builds every configuration into `OUT/<config>/`, copies the
 symbols to `OUT/symbols-<config>/`, checks with `check-env.py` that every
